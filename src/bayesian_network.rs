@@ -1,9 +1,10 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
 type Name = String;
 type Probability = f64;
 type NodeId = usize;
 
+/// The type of a node in a Bayesian network.
 #[derive(Clone)]
 pub enum NodeType<T> {
     Root(HashMap<T, Probability>),
@@ -11,7 +12,23 @@ pub enum NodeType<T> {
     Intermediate,
 }
 
-pub struct Node<T> {
+impl<T: Clone + PartialEq + Eq + Hash + Debug> Debug for NodeType<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeType::Root(prob) => {
+                let mut s = String::new();
+                for (value, prob) in prob {
+                    s.push_str(&format!("  {:?}: {}\n", value, prob));
+                }
+                write!(f, "Root(\n{})", s)
+            }
+            NodeType::Leaf => write!(f, "Leaf"),
+            NodeType::Intermediate => write!(f, "Intermediate"),
+        }
+    }
+}
+
+struct Node<T> {
     id: NodeId,
     parents: Vec<NodeId>,
     children: Vec<NodeId>,
@@ -31,13 +48,42 @@ impl<T> Node<T> {
     }
 }
 
-pub struct BayesianNetwork<T: Clone + Copy + PartialEq + Eq + Hash> {
+/// A Bayesian network.
+pub struct BayesianNetwork<T: Clone + PartialEq + Eq + Hash + Debug> {
     nodes: Vec<Node<T>>,
     node_map: HashMap<Name, NodeId>,
     value_space: Vec<T>,
 }
 
-impl<T: Clone + Copy + PartialEq + Eq + Hash> BayesianNetwork<T> {
+impl<T: Clone + PartialEq + Eq + Hash + Debug> Debug for BayesianNetwork<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+        s.push_str("--------------------\n");
+        s.push_str("| Bayesian Network |\n");
+        s.push_str("--------------------\n");
+        for node in &self.nodes {
+            s.push_str(&format!("{}: {:?}\n", node.id, node.node_type));
+            match node.node_type {
+                NodeType::Root(_) => {
+                    s.push_str(&format!("  children: {:?}\n\n", node.children));
+                }
+                NodeType::Leaf => {
+                    s.push_str(&format!("  parents: {:?}\n", node.parents));
+                    s.push_str(&format!("  probability: {:?}\n\n", node.probability));
+                }
+                NodeType::Intermediate => {
+                    s.push_str(&format!("  parents: {:?}\n", node.parents));
+                    s.push_str(&format!("  probability: {:?}\n", node.probability));
+                    s.push_str(&format!("  children: {:?}\n\n", node.children));
+                }
+            }
+        }
+        write!(f, "{}", s)
+    }
+}
+
+impl<T: Clone + PartialEq + Eq + Hash + Debug> BayesianNetwork<T> {
+    /// Create a new Bayesian network with the given value space.
     pub fn new(value_space: Vec<T>) -> BayesianNetwork<T> {
         BayesianNetwork {
             nodes: Vec::new(),
@@ -46,12 +92,32 @@ impl<T: Clone + Copy + PartialEq + Eq + Hash> BayesianNetwork<T> {
         }
     }
 
+    /// Add a node to the network.
     pub fn add_node(&mut self, name: &str, node_type: NodeType<T>) {
         if let NodeType::Root(prob) = &node_type {
             for value in &self.value_space {
                 if !prob.contains_key(value) {
-                    panic!("Root node probability map does not contain all values in value space");
+                    panic!(
+                        "Root node `{}` probability map does not contain all values in value space",
+                        name
+                    );
                 }
+            }
+            let mut sum = 0.0;
+            for value in prob.keys() {
+                if !self.value_space.contains(value) {
+                    panic!(
+                        "Root node `{}` probability map contains value not in value space",
+                        name
+                    );
+                }
+                sum += prob[value];
+            }
+            if (sum - 1.0).abs() > 0.0000001 {
+                eprintln!(
+                    "Warning: Root node `{}` probability map may not sum to 1.0",
+                    name
+                );
             }
         }
         let id = self.nodes.len();
@@ -59,35 +125,49 @@ impl<T: Clone + Copy + PartialEq + Eq + Hash> BayesianNetwork<T> {
         self.node_map.insert(name.to_string(), id);
     }
 
+    /// Add a dependency to the network.
     pub fn add_dependency(
         &mut self,
-        parents: Vec<&str>,
-        child: &str,
+        parent_names: Vec<&str>,
+        child_name: &str,
         prob: HashMap<Vec<T>, HashMap<T, Probability>>,
     ) {
         for (key, map) in &prob {
-            if key.len() != parents.len() {
-                panic!("Dependency probability map key length does not match parent length");
+            if key.len() != parent_names.len() {
+                panic!("Dependency probability map key length does not match parent length ({} and {}, {:?} -> {})", key.len(), parent_names.len(), parent_names, child_name);
             }
             for value in key {
                 if !self.value_space.contains(value) {
-                    panic!("Dependency probability map key contains value not in value space");
+                    panic!(
+                        "Dependency probability map key contains value not in value space ({:?}, {:?} -> {})",
+                        value, parent_names, child_name
+                    );
                 }
             }
             for value in &self.value_space {
                 if !map.contains_key(value) {
-                    panic!("Dependency probability map does not contain all values in value space");
+                    panic!("Dependency probability map does not contain all values in value space ({:?}, {:?} -> {})", value, parent_names, child_name);
                 }
             }
+            let mut sum = 0.0;
+            for value in map.keys() {
+                sum += map[value];
+            }
+            if (sum - 1.0).abs() > 0.0000001 {
+                eprintln!(
+                    "Warning: Dependency probability map may not sum to 1.0 ({:?} -> {})",
+                    parent_names, child_name
+                );
+            }
         }
-        let child_id = self.node_map[child];
-        for parent_name in parents {
+        let child_id = self.node_map[child_name];
+        for parent_name in parent_names {
             let parent_id = self.node_map[parent_name];
             if let NodeType::Leaf = self.nodes[parent_id].node_type {
-                panic!("Cannot add dependency from leaf node");
+                panic!("Cannot add dependency from leaf node `{}`", parent_name);
             }
             if let NodeType::Root(_) = self.nodes[child_id].node_type {
-                panic!("Cannot add dependency to root node");
+                panic!("Cannot add dependency to root node `{}`", child_name);
             }
             self.nodes[parent_id].children.push(child_id);
             self.nodes[child_id].parents.push(parent_id);
@@ -146,7 +226,7 @@ impl<T: Clone + Copy + PartialEq + Eq + Hash> BayesianNetwork<T> {
                     sum += prob[value] * parent_mul;
                 }
             }
-            map.insert(*value, lambda * sum);
+            map.insert(value.clone(), lambda * sum);
         }
         pi_map.insert((node.id, *child), map);
     }
@@ -204,17 +284,18 @@ impl<T: Clone + Copy + PartialEq + Eq + Hash> BayesianNetwork<T> {
                 }
                 sum += parent_mul * node_sum;
             }
-            map.insert(*value, sum);
+            map.insert(value.clone(), sum);
         }
         lambda_map.insert((node.id, *parent), map);
     }
 
+    /// Infer the probability of each node given the evidence.
     pub fn infer(&self, evidence: &HashMap<&str, T>) -> Vec<HashMap<T, Probability>> {
         let mut pi_map = HashMap::new();
         let mut lambda_map = HashMap::new();
         let mut _evidence: HashMap<NodeId, T> = HashMap::new();
         for (name, value) in evidence {
-            _evidence.insert(self.node_map[&name.to_string()], *value);
+            _evidence.insert(self.node_map[&name.to_string()], value.clone());
         }
         let evidence = &_evidence;
 
@@ -360,13 +441,15 @@ impl<T: Clone + Copy + PartialEq + Eq + Hash> BayesianNetwork<T> {
             }
             let sum: Probability = probs.iter().sum();
             for (i, value) in self.value_space.iter().enumerate() {
-                map.insert(*value, probs[i] / sum);
+                map.insert(value.clone(), probs[i] / sum);
             }
             inferred_probabilities.push(map);
         }
         inferred_probabilities
     }
 
+    /// Get the inferred probability of a node.
+    /// Must be called after `infer` and give return value of `infer` as argument.
     pub fn get_inferred_probability(
         &self,
         inferred_probabilities: &[HashMap<T, Probability>],

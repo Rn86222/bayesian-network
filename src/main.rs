@@ -78,4 +78,6 @@ fn main() {
         "ごちそうが出る確率: {}",
         network.get_inferred_probability(&inferred_probabilities, "ごちそう", true)
     );
+
+    println!("{:?}", network);
 }
