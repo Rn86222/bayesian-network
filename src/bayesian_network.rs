@@ -9,7 +9,7 @@ type NodeId = usize;
 pub enum NodeType<T> {
     Root(HashMap<T, Probability>),
     Leaf,
-    Intermediate,
+    Inner,
 }
 
 impl<T: Clone + PartialEq + Eq + Hash + Debug> Debug for NodeType<T> {
@@ -23,7 +23,7 @@ impl<T: Clone + PartialEq + Eq + Hash + Debug> Debug for NodeType<T> {
                 write!(f, "Root(\n{})", s)
             }
             NodeType::Leaf => write!(f, "Leaf"),
-            NodeType::Intermediate => write!(f, "Intermediate"),
+            NodeType::Inner => write!(f, "Inner"),
         }
     }
 }
@@ -57,24 +57,53 @@ pub struct BayesianNetwork<T: Clone + PartialEq + Eq + Hash + Debug> {
 
 impl<T: Clone + PartialEq + Eq + Hash + Debug> Debug for BayesianNetwork<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let id_to_name = self
+            .node_map
+            .iter()
+            .map(|(name, id)| (id, name))
+            .collect::<HashMap<&NodeId, &Name>>();
         let mut s = String::new();
         s.push_str("--------------------\n");
         s.push_str("| Bayesian Network |\n");
         s.push_str("--------------------\n");
         for node in &self.nodes {
-            s.push_str(&format!("{}: {:?}\n", node.id, node.node_type));
+            s.push_str(&format!("{}: {:?}\n", id_to_name[&node.id], node.node_type));
             match node.node_type {
                 NodeType::Root(_) => {
-                    s.push_str(&format!("  children: {:?}\n\n", node.children));
+                    s.push_str(&format!(
+                        "  children: {:?}\n\n",
+                        node.children
+                            .iter()
+                            .map(|id| id_to_name[id])
+                            .collect::<Vec<&Name>>()
+                    ));
                 }
                 NodeType::Leaf => {
-                    s.push_str(&format!("  parents: {:?}\n", node.parents));
+                    s.push_str(&format!(
+                        "  parents: {:?}\n",
+                        node.parents
+                            .iter()
+                            .map(|id| id_to_name[id])
+                            .collect::<Vec<&Name>>()
+                    ));
                     s.push_str(&format!("  probability: {:?}\n\n", node.probability));
                 }
-                NodeType::Intermediate => {
-                    s.push_str(&format!("  parents: {:?}\n", node.parents));
+                NodeType::Inner => {
+                    s.push_str(&format!(
+                        "  parents: {:?}\n",
+                        node.parents
+                            .iter()
+                            .map(|id| id_to_name[id])
+                            .collect::<Vec<&Name>>()
+                    ));
                     s.push_str(&format!("  probability: {:?}\n", node.probability));
-                    s.push_str(&format!("  children: {:?}\n\n", node.children));
+                    s.push_str(&format!(
+                        "  children: {:?}\n\n",
+                        node.children
+                            .iter()
+                            .map(|id| id_to_name[id])
+                            .collect::<Vec<&Name>>()
+                    ));
                 }
             }
         }

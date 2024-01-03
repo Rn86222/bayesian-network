@@ -4,15 +4,23 @@ use std::collections::HashMap;
 
 fn main() {
     let mut network = BayesianNetwork::new(vec![true, false]);
+
     let mut a_prob_map = HashMap::new();
     a_prob_map.insert(true, 0.01);
     a_prob_map.insert(false, 0.99);
     network.add_node("業績", NodeType::Root(a_prob_map));
+
     let mut b_prob_map = HashMap::new();
     b_prob_map.insert(true, 0.1);
     b_prob_map.insert(false, 0.9);
     network.add_node("競馬", NodeType::Root(b_prob_map));
-    network.add_node("ごきげん", NodeType::Intermediate);
+
+    network.add_node("ごきげん", NodeType::Inner);
+
+    network.add_node("ボーナス", NodeType::Leaf);
+
+    network.add_node("ごちそう", NodeType::Leaf);
+
     let mut c_prob_map = HashMap::new();
     let mut c_prob_map_tt = HashMap::new();
     c_prob_map_tt.insert(true, 0.99);
@@ -31,8 +39,7 @@ fn main() {
     c_prob_map.insert(vec![true, false], c_prob_map_tf);
     c_prob_map.insert(vec![false, false], c_prob_map_ff);
     network.add_dependency(vec!["業績", "競馬"], "ごきげん", c_prob_map);
-    network.add_node("ボーナス", NodeType::Leaf);
-    network.add_node("ごちそう", NodeType::Leaf);
+
     let mut d_prob_map = HashMap::new();
     let mut d_prob_map_t = HashMap::new();
     d_prob_map_t.insert(true, 0.3);
@@ -43,6 +50,7 @@ fn main() {
     d_prob_map.insert(vec![true], d_prob_map_t);
     d_prob_map.insert(vec![false], d_prob_map_f);
     network.add_dependency(vec!["ごきげん"], "ボーナス", d_prob_map);
+
     let mut e_prob_map = HashMap::new();
     let mut e_prob_map_t = HashMap::new();
     e_prob_map_t.insert(true, 0.9);
