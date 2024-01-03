@@ -123,13 +123,11 @@ impl<T: Clone + PartialEq + Eq + Hash + Debug> BayesianNetwork<T> {
 
     /// Add a node to the network.
     pub fn add_node(&mut self, name: &str, node_type: NodeType<T>) {
-        if let NodeType::Root(prob) = &node_type {
+        let mut node_type = node_type;
+        if let NodeType::Root(prob) = &mut node_type {
             for value in &self.value_space {
                 if !prob.contains_key(value) {
-                    panic!(
-                        "Root node `{}` probability map does not contain all values in value space",
-                        name
-                    );
+                    prob.insert(value.clone(), 0.0);
                 }
             }
             let mut sum = 0.0;
@@ -161,7 +159,8 @@ impl<T: Clone + PartialEq + Eq + Hash + Debug> BayesianNetwork<T> {
         child_name: &str,
         prob: HashMap<Vec<T>, HashMap<T, Probability>>,
     ) {
-        for (key, map) in &prob {
+        let mut prob = prob;
+        for (key, map) in &mut prob {
             if key.len() != parent_names.len() {
                 panic!("Dependency probability map key length does not match parent length ({} and {}, {:?} -> {})", key.len(), parent_names.len(), parent_names, child_name);
             }
@@ -175,7 +174,7 @@ impl<T: Clone + PartialEq + Eq + Hash + Debug> BayesianNetwork<T> {
             }
             for value in &self.value_space {
                 if !map.contains_key(value) {
-                    panic!("Dependency probability map does not contain all values in value space ({:?}, {:?} -> {})", value, parent_names, child_name);
+                    map.insert(value.clone(), 0.0);
                 }
             }
             let mut sum = 0.0;
@@ -189,8 +188,14 @@ impl<T: Clone + PartialEq + Eq + Hash + Debug> BayesianNetwork<T> {
                 );
             }
         }
+        if !self.node_map.contains_key(child_name) {
+            panic!("Dependency child node `{}` not found", child_name);
+        }
         let child_id = self.node_map[child_name];
         for parent_name in parent_names {
+            if !self.node_map.contains_key(parent_name) {
+                panic!("Dependency parent node `{}` not found", parent_name);
+            }
             let parent_id = self.node_map[parent_name];
             if let NodeType::Leaf = self.nodes[parent_id].node_type {
                 panic!("Cannot add dependency from leaf node `{}`", parent_name);
